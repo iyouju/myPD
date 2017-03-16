@@ -8,6 +8,8 @@ import numpy as np
 import tensorflow as tf
 from PIL import Image
 
+
+
 IMG_H = 128
 IMG_W = 64
 
@@ -26,13 +28,15 @@ class TFreader:
     threads = None
     
     # controle the consumption of RAM
+    useGPU = True
     sessConfig = tf.ConfigProto()
     sessConfig.gpu_options.allow_growth=True
     
-    def __init__(self,fileName,batch_size,num_epochs=None):
+    def __init__(self,fileName,batch_size,num_epochs=None,useGPU=True):
         self.fileName = fileName
         self.batchSize = batch_size
         self.numEpochs = num_epochs
+        self.useGPU = useGPU
         self.graph = tf.Graph()
         self.coord = tf.train.Coordinator()
         
@@ -65,30 +69,33 @@ class TFreader:
             self.imgBatch,self.labelsBatch = tf.train.shuffle_batch([img,labels],
                                                                     batch_size = self.batchSize,
 #                                                                    num_threads=2,
-                                                                    capacity = 2000,
-                                                                    min_after_dequeue = 500)
+                                                                    capacity = 500,
+                                                                    min_after_dequeue = 100)
 #            print type(self.labelsBatch)
     def reBatch(self):
         with self.graph.as_default():
             
             #--------------
-            self.session = tf.Session(graph=self.graph,config=self.sessConfig)
+            if self.useGPU:
+                self.session = tf.Session(graph=self.graph,config=self.sessConfig)
+            else:
+                self.session = tf.Session(graph=self.graph)
     #        with self.session as sess:
             tf.local_variables_initializer().run(session=self.session) # epoch计数变量是local variable
             tf.global_variables_initializer().run(session=self.session)
             self.coord = tf.train.Coordinator()  
             self.threads = tf.train.start_queue_runners(sess=self.session, coord=self.coord)
-            if not self.coord.should_stop():
-                img,label = self.session.run([self.imgBatch,self.labelsBatch])
-            else:
-                img = None
-                label = None
-#            try:
+#            if not self.coord.should_stop():
 #                img,label = self.session.run([self.imgBatch,self.labelsBatch])
-#            except tf.errors.OutOfRangeError:    # 文件队列关闭后，终止循环
+#            else:
 #                img = None
 #                label = None
-#                print('None')
+            try:
+                img,label = self.session.run([self.imgBatch,self.labelsBatch])
+            except tf.errors.OutOfRangeError:    # 文件队列关闭后，终止循环
+                img = None
+                label = None
+                print('None')
             
         self.coord.request_stop()  
         self.coord.join(self.threads) 
@@ -98,14 +105,14 @@ class TFreader:
             
 
 if __name__ == '__main__':
-    BATCH_SIZE = 50
+    BATCH_SIZE = 5
     train_data_node = tf.placeholder(
         tf.float32,
         shape=(BATCH_SIZE,IMG_H,IMG_W,1))
         
     train_labels_node = tf.placeholder(tf.int64,shape=(BATCH_SIZE,))
 
-    tfReader = TFreader("train2_64x128.tfrecords",BATCH_SIZE,num_epochs=1)
+    tfReader = TFreader("train2_64x128.tfrecords",BATCH_SIZE,num_epochs=1,useGPU=False)
     i = 0
     while True:
         img,label = tfReader.reBatch()

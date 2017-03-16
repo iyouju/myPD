@@ -4,11 +4,11 @@ Created on Mon Mar 13 08:52:21 2017
 
 @author: root
 """
-from __feature__ import division
+#from __feature__ import division
 import numpy as np
 import tensorflow as tf
 from PIL import Image
-import tfReadTest2
+import TFreader as tfreader
 import time
 
 
@@ -18,9 +18,13 @@ IMG_CH = 3
 LABEL_W = 2
 
 NUM_EPOCHS = 10
-BATCH_SIZE = 10
+BATCH_SIZE = 50
 DECAY_STEP = 4000 
 SEED = 66478  # Set to None for random seed.
+
+
+# Train data
+tfReader = tfreader.TFreader("train2_64x128.tfrecords",BATCH_SIZE,num_epochs=1)
 
 #
 def data_type():
@@ -32,7 +36,8 @@ def error_rate(predictions, labels):
       100.0 *
       np.sum(np.argmax(predictions, 1) == labels) /
       predictions.shape[0])
-      
+
+#----		global variables      
 #    eval_data = tf.place
 c1_w = tf.Variable(
     tf.truncated_normal([5,5,IMG_CH,32],#5x5 filter depth 32.
@@ -54,7 +59,7 @@ fc2_w = tf.Variable(
                         stddev=0.1,
                         seed=SEED,dtype = data_type()))
 fc2_b = tf.Variable(tf.constant(0.1,shape=[LABEL_W],dtype=data_type()))
-
+#---------------------	end global variables
 #
 def model(data,train=False):
     # shape matches the data layout:[image index,y,x,depth].
@@ -103,7 +108,6 @@ if __name__ == '__main__':
         shape=(BATCH_SIZE,IMG_H,IMG_W,IMG_CH))
         
     train_labels_node = tf.placeholder(tf.int64,shape=(BATCH_SIZE,))
-
     # Training computation: logits + cross-entropy loss
     logits = model(train_data_node,True)
     loss = tf.reduce_mean(
@@ -128,41 +132,26 @@ if __name__ == '__main__':
     # Predictions for the current training minibatch
     trainPrediction = tf.nn.softmax(logits)
 
-    # Train data
-#    img,label = tfReadTest2.read_and_decode("train2_64x128.tfrecords",num_epochs=NUM_EPOCHS)
+
+
     init = tf.initialize_all_variables()
     print('Initialized.')
     # Create a local session to run the training.
     with tf.Session() as sess:
         sess.run(init)
-        # Start the quen
-        coord = tf.train.Coordinator()
-        threads = tf.train.start_queue_runners(sess=sess,coord=coord)
-        
-        for i in range(1000):
-            print('start')
-            startTime = time.time()  
-#            imgBatch,labelBatch = tf.train.shuffle_batch([img,label],
-#                                                   batch_size=BATCH_SIZE,
-#                                                   capacity=2000,min_after_dequeue=100)
-            img_batch, label_batch = tf.train.shuffle_batch([img,label],
-                                                   batch_size=BATCH_SIZE,
-                                                   capacity=2000,min_after_dequeue=1000)
-            print('test1')             
-            imgBatch,labelBatch= sess.run([img_batch, label_batch])                                       
-            print('test2')            
-            feed_dict = {train_data_node: imgBatch,
-                         train_labels_node: labelBatch}
+        imgBatch,labelBatch = tfReader.reBatch()
+        feed_dict = {train_data_node: imgBatch,
+                     train_labels_node: labelBatch}
 #            feed_dict = {imgBatch,labelBatch}
-            #
+        #
 #            sess.run([optimizer,loss],feed_dict=feed_dict)
-            
-            l,prediction = sess.run([loss,trainPrediction],feed_dict=feed_dict)     
-            
-            
-            elapsed_time = time.time() - startTime
-            print('time:%.1f ms' %elapsed_time)
-            print('l:%f' %l)
+        
+        l,prediction = sess.run([loss,trainPrediction],feed_dict=feed_dict)     
+        
+        
+        elapsed_time = time.time() - startTime
+        print('time:%.1f ms' %elapsed_time)
+        print('l:%f' %l)
             
             
 #            print()
