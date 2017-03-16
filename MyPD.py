@@ -12,7 +12,6 @@ import tfReadTest2
 import time
 
 
-
 IMG_H = 128
 IMG_W = 64
 IMG_CH = 3
