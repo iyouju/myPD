@@ -19,7 +19,7 @@ LABEL_W = 2
 
 NUM_EPOCHS = 10
 BATCH_SIZE = 50
-DECAY_STEP = 4000 
+DECAY_STEP = 4000
 SEED = 66478  # Set to None for random seed.
 
 
@@ -37,25 +37,25 @@ def error_rate(predictions, labels):
       np.sum(np.argmax(predictions, 1) == labels) /
       predictions.shape[0])
 
-#----		global variables      
+#----		global variables
 #    eval_data = tf.place
 c1_w = tf.Variable(
-    tf.truncated_normal([5,5,IMG_CH,32],#5x5 filter depth 32.
+    tf.truncated_normal([8,8,IMG_CH,64],#5x5 filter depth 32.
                         stddev=0.1,
                         seed=SEED,dtype=data_type()))
-c1_b = tf.Variable(tf.zeros([32],dtype = data_type()))
+c1_b = tf.Variable(tf.zeros([64],dtype = data_type()))
 c2_w = tf.Variable(
-    tf.truncated_normal([5,5,32,64],
+    tf.truncated_normal([4,4,64,32],
                         stddev=0.1,
                         seed=SEED,dtype = data_type()))
-c2_b = tf.Variable(tf.zeros([64],dtype = data_type()))
+c2_b = tf.Variable(tf.zeros([32],dtype = data_type()))
 fc1_w = tf.Variable(
-    tf.truncated_normal([IMG_H//4*IMG_W//4*64,512],
+    tf.truncated_normal([IMG_H//4*IMG_W//4*32,1024],
                         stddev=0.1,
                         seed=SEED,dtype = data_type()))
-fc1_b = tf.Variable(tf.constant(0.1,shape=[512],dtype=data_type()))
+fc1_b = tf.Variable(tf.constant(0.1,shape=[1024],dtype=data_type()))
 fc2_w = tf.Variable(
-    tf.truncated_normal([512,LABEL_W],
+    tf.truncated_normal([1024,LABEL_W],
                         stddev=0.1,
                         seed=SEED,dtype = data_type()))
 fc2_b = tf.Variable(tf.constant(0.1,shape=[LABEL_W],dtype=data_type()))
@@ -70,7 +70,7 @@ def model(data,train=False):
     # Bias and rectified linear non-linearity.
     relu1 = tf.nn.relu(tf.nn.bias_add(c1,c1_b))
     # Max pooling
-    
+
     pool1 = tf.nn.max_pool(relu1,
                           ksize=[1,2,2,1],
                             strides=[1,2,2,1],
@@ -95,9 +95,9 @@ def model(data,train=False):
     # Dropout also scales activations such that no rescaling is needed at evaluation time
     if train:
         fc1 = tf.nn.dropout(fc1,0.5,seed=SEED)
-    return tf.matmul(fc1,fc2_w) + fc2_b
-#--------------------end model      
-      
+    return tf.nn.softmax(tf.matmul(fc1,fc2_w) + fc2_b)
+#--------------------end model
+
 #def main(_):
 if __name__ == '__main__':
     #This is where training samples and labels are fed to the graph.
@@ -106,59 +106,58 @@ if __name__ == '__main__':
     train_data_node = tf.placeholder(
         data_type(),
         shape=(BATCH_SIZE,IMG_H,IMG_W,IMG_CH))
-        
-    train_labels_node = tf.placeholder(tf.int64,shape=(BATCH_SIZE,))
+
+    train_labels_node = tf.placeholder(tf.int64,shape=(BATCH_SIZE,2))
     # Training computation: logits + cross-entropy loss
     logits = model(train_data_node,True)
     loss = tf.reduce_mean(
-                        tf.nn.sparse_softmax_cross_entropy_with_logits(
+                        tf.nn.softmax_cross_entropy_with_logits(
                             logits,train_labels_node))
     # L2 regularization for the fully connected parameters.
-    regularizers = (tf.nn.l2_loss(fc1_w) + tf.nn.l2_loss(fc1_b) + tf.nn.l2_loss(fc2_w) + tf.nn.l2_loss(fc2_b))
+    # regularizers = (tf.nn.l2_loss(fc1_w) + tf.nn.l2_loss(fc1_b) + tf.nn.l2_loss(fc2_w) + tf.nn.l2_loss(fc2_b))
     # Add the regularization term to the loss.
-    loss += 5e-4*regularizers
-    
+    # loss += 5e-4*regularizers
+
     # Optimizer: set up a variable that's incremented once per batch and controls the learning rate decay.
-    batch = tf.Variable(0,dtype=data_type())
+    batch = tf.Variable(1,dtype=data_type())
     # Decay once per epoch, using an exponential schedule starting at 0.01
     learningRate = tf.train.exponential_decay(
-        0.01,               # Base learning rate.    
+        0.1,               # Base learning rate.
         batch * BATCH_SIZE, # Current index into the dataset
         DECAY_STEP,         # Decay step.
-        0.95,               # Decay rate.
+        0.99,               # Decay rate.
         staircase=True)
+    # learningRate = 0.1
     optimizer = tf.train.MomentumOptimizer(learningRate,0.9).minimize(loss,global_step=batch)
-    
+
     # Predictions for the current training minibatch
     trainPrediction = tf.nn.softmax(logits)
 
-
-
     init = tf.initialize_all_variables()
     print('Initialized.')
+    startTime = time.time()
     # Create a local session to run the training.
-    with tf.Session() as sess:
+    sessConfig = tf.ConfigProto()
+    sessConfig.gpu_options.allow_growth=True
+    with tf.Session(config=sessConfig) as sess:
+        # sess.config = sessConfig
         sess.run(init)
-        imgBatch,labelBatch = tfReader.reBatch()
-        feed_dict = {train_data_node: imgBatch,
-                     train_labels_node: labelBatch}
-#            feed_dict = {imgBatch,labelBatch}
-        #
-#            sess.run([optimizer,loss],feed_dict=feed_dict)
-        
-        l,prediction = sess.run([loss,trainPrediction],feed_dict=feed_dict)     
-        
-        
-        elapsed_time = time.time() - startTime
-        print('time:%.1f ms' %elapsed_time)
-        print('l:%f' %l)
-            
-            
-#            print()
-        coord.request_stop()
-        coord.join(threads)
-        sess.close()               
-                                
-                            
-                        
-    
+        while True:
+            imgBatch,labelBatch = tfReader.reBatch()
+            if not imgBatch == None:
+                feed_dict = {train_data_node: imgBatch,
+                             train_labels_node: labelBatch}
+        #            feed_dict = {imgBatch,labelBatch}
+                #
+        #            sess.run([optimizer,loss],feed_dict=feed_dict)
+                sess.run(optimizer,feed_dict=feed_dict)
+                lrate,l,prediction = sess.run([learningRate,loss,trainPrediction],feed_dict=feed_dict)
+
+
+                elapsed_time = time.time() - startTime
+                print("time:",elapsed_time,"ms")
+                print("loss:",l,"learnrate:",lrate)
+            else:
+                print("Queue is empty.")
+
+        sess.close()
