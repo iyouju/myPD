@@ -7,8 +7,8 @@ Created on Mon Mar  6 13:12:37 2017
 import numpy as np
 import tensorflow as tf
 from PIL import Image
-
-
+# from PIL import ImageDraw
+import ImageDraw
 
 IMG_H = 128
 IMG_W = 64
@@ -85,42 +85,49 @@ class TFreader:
             tf.global_variables_initializer().run(session=self.session)
             self.coord = tf.train.Coordinator()
             self.threads = tf.train.start_queue_runners(sess=self.session, coord=self.coord)
-#            if not self.coord.should_stop():
-#                img,label = self.session.run([self.imgBatch,self.labelsBatch])
-#            else:
-#                img = None
-#                label = None
-            try:
-                img,label = self.session.run([self.imgBatch,self.labelsBatch])
-            except tf.errors.OutOfRangeError:    # 文件队列关闭后，终止循环
-                img = None
-                label = None
-                print('None')
+            if not self.coord.should_stop() :
+               img,label = self.session.run([self.imgBatch,self.labelsBatch])
+            else:
+               img = None
+               label = None
+               self.coord.request_stop()
+            # try:
+            #     img,label = self.session.run([self.imgBatch,self.labelsBatch])
+            # except tf.errors.OutOfRangeError:    # 文件队列关闭后，终止循环
+            #     img = None
+            #     label = None
+            #     print('None')
 
-        self.coord.request_stop()
-        self.coord.join(self.threads)
+        # self.coord.request_stop()
+        # self.coord.join(self.threads)
 
         return img,label
 
 
 
 if __name__ == '__main__':
-    BATCH_SIZE = 5
+    BATCH_SIZE = 50
     train_data_node = tf.placeholder(
         tf.float32,
         shape=(BATCH_SIZE,IMG_H,IMG_W,1))
 
     train_labels_node = tf.placeholder(tf.int64,shape=(BATCH_SIZE,))
 
-    tfReader = TFreader("train2_64x128.tfrecords",BATCH_SIZE,num_epochs=1,useGPU=False)
+    tfReader = TFreader("train2_64x128.tfrecords",BATCH_SIZE,num_epochs=1,setGPU=False)
     i = 0
+
     while True:
         img,label = tfReader.reBatch()
         i += 1
         if img != None :
+            # for im in img:
+            #     image = Image.fromarray(im)
+            #     image.show()
+            # fig = ImageDraw.Draw(image)
             print label[0]
             print label.shape
             print i
+            # break
         else:
             print('Queue is empty.')
             break

@@ -17,7 +17,7 @@ IMG_W = 64
 IMG_CH = 3
 LABEL_W = 2
 
-NUM_EPOCHS = 10
+NUM_EPOCHS = 1
 BATCH_SIZE = 50
 DECAY_STEP = 4000
 SEED = 66478  # Set to None for random seed.
@@ -34,7 +34,7 @@ def error_rate(predictions, labels):
   """Return the error rate based on dense predictions and sparse labels."""
   return 100.0 - (
       100.0 *
-      np.sum(np.argmax(predictions, 1) == labels) /
+      np.sum(np.argmax(predictions, 1) == np.argmax(labels, 1)) /
       predictions.shape[0])
 
 #----		global variables
@@ -90,12 +90,12 @@ def model(data,train=False):
                         pool2,
                         [poolShape[0],poolShape[1]*poolShape[2]*poolShape[3]])
     # Fully connected layer. Note that the '+' operation automatically broadcasts the biases.
-    fc1 = tf.nn.relu(tf.matmul(reshape,fc1_w) + fc1_b)
+    fc1 = tf.nn.tanh(tf.matmul(reshape,fc1_w) + fc1_b)
     # Add a 50% dropout during training training only.
     # Dropout also scales activations such that no rescaling is needed at evaluation time
     if train:
         fc1 = tf.nn.dropout(fc1,0.5,seed=SEED)
-    return tf.nn.softmax(tf.matmul(fc1,fc2_w) + fc2_b)
+    return tf.nn.sigmoid(tf.matmul(fc1,fc2_w) + fc2_b)
 #--------------------end model
 
 #def main(_):
@@ -107,19 +107,18 @@ if __name__ == '__main__':
         data_type(),
         shape=(BATCH_SIZE,IMG_H,IMG_W,IMG_CH))
 
-    train_labels_node = tf.placeholder(tf.int64,shape=(BATCH_SIZE,2))
+    train_labels_node = tf.placeholder(data_type(),shape=(BATCH_SIZE,2))
     # Training computation: logits + cross-entropy loss
     logits = model(train_data_node,True)
-    loss = tf.reduce_mean(
-                        tf.nn.softmax_cross_entropy_with_logits(
-                            logits,train_labels_node))
+    loss1 = tf.reduce_mean(
+                        tf.nn.sigmoid_cross_entropy_with_logits(logits=logits,labels=train_labels_node))
     # L2 regularization for the fully connected parameters.
-    # regularizers = (tf.nn.l2_loss(fc1_w) + tf.nn.l2_loss(fc1_b) + tf.nn.l2_loss(fc2_w) + tf.nn.l2_loss(fc2_b))
+    regularizers = (tf.nn.l2_loss(fc1_w) + tf.nn.l2_loss(fc1_b) + tf.nn.l2_loss(fc2_w) + tf.nn.l2_loss(fc2_b))
     # Add the regularization term to the loss.
-    # loss += 5e-4*regularizers
+    loss = loss1 + 5e-4*regularizers
 
     # Optimizer: set up a variable that's incremented once per batch and controls the learning rate decay.
-    batch = tf.Variable(1,dtype=data_type())
+    batch = tf.Variable(0,dtype=data_type())
     # Decay once per epoch, using an exponential schedule starting at 0.01
     learningRate = tf.train.exponential_decay(
         0.1,               # Base learning rate.
@@ -131,33 +130,36 @@ if __name__ == '__main__':
     optimizer = tf.train.MomentumOptimizer(learningRate,0.9).minimize(loss,global_step=batch)
 
     # Predictions for the current training minibatch
-    trainPrediction = tf.nn.softmax(logits)
+    trainPrediction = logits
 
     init = tf.initialize_all_variables()
-    print('Initialized.')
-    startTime = time.time()
     # Create a local session to run the training.
     sessConfig = tf.ConfigProto()
     sessConfig.gpu_options.allow_growth=True
     with tf.Session(config=sessConfig) as sess:
         # sess.config = sessConfig
         sess.run(init)
+        print('Initialized.')
+        step = 0
         while True:
+            startTime = time.time()
             imgBatch,labelBatch = tfReader.reBatch()
             if not imgBatch == None:
                 feed_dict = {train_data_node: imgBatch,
                              train_labels_node: labelBatch}
         #            feed_dict = {imgBatch,labelBatch}
-                #
-        #            sess.run([optimizer,loss],feed_dict=feed_dict)
-                sess.run(optimizer,feed_dict=feed_dict)
-                lrate,l,prediction = sess.run([learningRate,loss,trainPrediction],feed_dict=feed_dict)
+
+                # sess.run(optimizer,feed_dict=feed_dict)
+                _,lrate,l,prediction = sess.run([optimizer,learningRate,loss1,trainPrediction],feed_dict=feed_dict)
 
 
                 elapsed_time = time.time() - startTime
-                print("time:",elapsed_time,"ms")
-                print("loss:",l,"learnrate:",lrate)
+                print('step:%d' %step)
+                step += 1
+                print('time:%f s' %elapsed_time)
+                print('loss:%f ,learnrate:%f' %(l,lrate))
+                # print('prediction:',prediction)
             else:
-                print("Queue is empty.")
+                print('Queue is empty.')
 
         sess.close()
