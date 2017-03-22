@@ -17,7 +17,7 @@ IMG_H = 128
 IMG_W = 64
 NEGLABEL = [0,1]
 POSLABEL = [1,0]
-
+PROPORTION_TRAIN_DATA = 0.9
 negPath = '/home/iyouju/pythonPro/DATASETS/INRIAPerson/train_64x128_H96/neg/'
 posPath = '/home/iyouju/pythonPro/DATASETS/INRIAPerson/train_64x128_H96/pos/'
 #--------------------------------
@@ -74,19 +74,32 @@ def createTFrecords():
     for img in posNameList:
         imgPath.append(posPath+img)
         imgLabel.append(POSLABEL)
-
-    index = range(len(imgPath))
+    numTotal = len(imgPath)
+    numTrainData = np.floor(numTotal * PROPORTION_TRAIN_DATA)
+#    numTestData = numTotal - numTrainData
+    
+    index = range(numTotal)
     random.shuffle(index)
-    pathList = []
-    labelList = []
+    pathListTrain = []
+    labelListTrain = []
+    pathListTest = []
+    labelListTest = []
+    
+    cnt = 0
     for i in index:
-        pathList.append(imgPath[i])
-        labelList.append(imgLabel[i])
+        if cnt < numTrainData:
+            pathListTrain.append(imgPath[i])
+            labelListTrain.append(imgLabel[i])
+        else:
+            pathListTest.append(imgPath[i])
+            labelListTest.append(imgLabel[i])
+        cnt += 1
 
-    writer = tf.python_io.TFRecordWriter("train2_64x128.tfrecords")
-    addTFrecords2(pathList,labelList,writer)
-#    addTFrecords(negPath,negNameList,0,writer)
-#    addTFrecords(posPath,posNameList,1,writer)
+    writer = tf.python_io.TFRecordWriter("trainData_64x128.tfrecords")
+    addTFrecords2(pathListTrain,labelListTrain,writer)
+    writer.close()
+    writer = tf.python_io.TFRecordWriter("testData_64x128.tfrecords")
+    addTFrecords2(pathListTest,labelListTest,writer)
     writer.close()
 #-------------------------------
 
